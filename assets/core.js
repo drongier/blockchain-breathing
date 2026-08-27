@@ -110,44 +110,62 @@
     return pts;
   }
 
+  // --- the ten base archetypes, UJI-preset style ---
+  // each has its own shapes, deformations, energy and stroke style
+  const ARCHETYPES = [
+    { name: "orbite", shapes: [1], defs: ["twist", "drift"], ampScale: 0.9, thick: [1.2, 2.6], alpha: [0.5, 0.7] },
+    { name: "respiration", shapes: [1], defs: ["breathe", "ripple"], ampScale: 1.2, thick: [0.8, 1.8], alpha: [0.45, 0.65] },
+    { name: "etoile filante", shapes: [2], defs: ["drift", "twist"], ampScale: 1.0, thick: [1.0, 2.2], alpha: [0.5, 0.7] },
+    { name: "vortex", shapes: [3], defs: ["twist", "breathe", "drift"], ampScale: 1.1, thick: [1.0, 2.4], alpha: [0.5, 0.7] },
+    { name: "noeud", shapes: [4], defs: ["flow", "breathe"], ampScale: 1.0, thick: [1.0, 2.0], alpha: [0.5, 0.7] },
+    { name: "cristal", shapes: [5], defs: ["ripple", "melt", "flow"], ampScale: 0.9, thick: [1.2, 2.6], alpha: [0.45, 0.65] },
+    { name: "tapis", shapes: [5], defs: ["breathe", "ripple", "drift"], ampScale: 1.0, thick: [1.0, 2.2], alpha: [0.45, 0.65] },
+    { name: "galaxie", shapes: [3], defs: ["flow", "drift"], ampScale: 1.3, thick: [0.8, 1.8], alpha: [0.5, 0.7] },
+    { name: "fleur", shapes: [1, 2], defs: ["breathe", "ripple"], ampScale: 1.2, thick: [0.9, 2.0], alpha: [0.45, 0.65] },
+    { name: "tempete", shapes: [2], defs: ["flow", "twist", "drift"], ampScale: 1.4, thick: [1.0, 2.4], alpha: [0.5, 0.7] },
+  ];
+
   // --- epoch generator: the fixed identity of one epoch's artwork ---
   // depends only on epochId (+ canvas size), so live canvas and gallery agree
   function makeEpochGen(epochId, w, h) {
     const rng = mulberry32(epochId * 7919 + 104729);
     const r = rng;
-    const shape = 1 + Math.floor(r() * 5);
+    const arch = ARCHETYPES[Math.floor(r() * ARCHETYPES.length)];
+    const shape = arch.shapes[Math.floor(r() * arch.shapes.length)];
     const segments = Math.round(60 + r() * 90);
     const cx = w * (0.3 + r() * 0.4);
     const cy = h * (0.3 + r() * 0.4);
     const size = Math.hypot(w, h) / 2 * (0.12 + r() * 0.18);
     const stepsPerSlot = 2 + Math.floor(r() * 3); // 2-4 steps per slot
-    const thickness = 1 + r() * 1.6;
-    const alpha = 0.45 + r() * 0.25;
+    const thickness = arch.thick[0] + r() * (arch.thick[1] - arch.thick[0]);
+    const alpha = arch.alpha[0] + r() * (arch.alpha[1] - arch.alpha[0]);
 
-    // pick 2-3 deformations with gentle base amplitudes
-    const pool = ["breathe", "twist", "ripple", "melt", "drift", "flow"];
-    const defCount = 2 + Math.floor(r() * 2);
-    const defs = [];
-    for (let d = 0; d < defCount; d++) {
-      const idx = Math.floor(r() * pool.length);
-      const name = pool.splice(idx, 1)[0];
+    // build the archetype's deformations with seeded, scaled amplitudes
+    const defs = arch.defs.map(function (name) {
       if (name === "breathe") {
-        defs.push({ name, amp: 0.02 + r() * 0.05, phase: r() * 2 * Math.PI });
-      } else if (name === "twist") {
-        defs.push({ name, amp: (0.2 + r() * 0.8) * (Math.PI / 180) });
-      } else if (name === "ripple") {
-        defs.push({ name, amp: 1.5 + r() * 3, freq: 1 + r() * 3 });
-      } else if (name === "melt") {
-        defs.push({ name, amp: 0.002 + r() * 0.005 });
-      } else if (name === "drift") {
-        defs.push({ name, vx: (r() - 0.5) * 1.2, vy: (r() - 0.5) * 1.2 });
-      } else if (name === "flow") {
-        defs.push({ name, amp: 0.5 + r() * 1.5, scale: 0.004 + r() * 0.004, step: 0.06 + r() * 0.06 });
+        return { name, amp: (0.02 + r() * 0.05) * arch.ampScale, phase: r() * 2 * Math.PI };
       }
-    }
+      if (name === "twist") {
+        return { name, amp: (0.2 + r() * 0.8) * (Math.PI / 180) * arch.ampScale };
+      }
+      if (name === "ripple") {
+        return { name, amp: (1.5 + r() * 3) * arch.ampScale, freq: 1 + r() * 3 };
+      }
+      if (name === "melt") {
+        return { name, amp: (0.002 + r() * 0.005) * arch.ampScale };
+      }
+      if (name === "drift") {
+        return { name, vx: (r() - 0.5) * 1.2 * arch.ampScale, vy: (r() - 0.5) * 1.2 * arch.ampScale };
+      }
+      if (name === "flow") {
+        return { name, amp: (0.5 + r() * 1.5) * arch.ampScale, scale: 0.004 + r() * 0.004, step: 0.06 + r() * 0.06 };
+      }
+      return { name, amp: 0 };
+    });
 
     return {
       epochId,
+      archName: arch.name,
       shape,
       segments,
       cx,

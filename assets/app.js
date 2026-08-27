@@ -122,6 +122,7 @@
     if (!state.gen) {
       state.gen = window.BB.makeEpochGen(state.epochId, W, H);
       state.form = window.BB.baseShape(state.gen);
+      el("motor").textContent = state.gen.archName;
     }
     // seq = position in the seen sequence, so live and gallery stay in sync
     const seq = state.layers.length;
@@ -202,6 +203,7 @@
     state.particles = [];
     state.gen = null;
     state.form = null;
+    el("motor").textContent = "·";
     ctx.clearRect(0, 0, W, H);
   }
 
