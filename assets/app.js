@@ -43,6 +43,8 @@
     txCount: 0,
     priceMin: Infinity,
     priceMax: -Infinity,
+    gen: null, // epoch generator (fixed identity of the artwork)
+    form: null, // current evolved shape
     layers: [],
     particles: [],
     epochData: [],
@@ -61,7 +63,7 @@
     el("epochId").textContent = state.epochId === null ? "·" : "#" + state.epochId;
     el("slotIndex").textContent =
       state.slotIndex === null ? "·" : state.slotIndex + 1 + " / 32";
-    el("price").textContent = state.price ? "$" + state.price.toFixed(0) : "·";
+    el("price").textContent = state.price ? "$" + state.price.toFixed(2) : "·";
     el("txCount").textContent = state.txCount === 0 ? "·" : state.txCount;
   }
 
@@ -114,11 +116,24 @@
     return { min: state.priceMin, max: state.priceMax };
   }
 
+  // evolve the unique shape of this epoch by one slot, then record the layer
   function addLayer(slotIndex, price, tx) {
+    const agi = Math.min(1, tx / window.BB.MAX_TX);
+    if (!state.gen) {
+      state.gen = window.BB.makeEpochGen(state.epochId, W, H);
+      state.form = window.BB.baseShape(state.gen);
+    }
+    // seq = position in the seen sequence, so live and gallery stay in sync
+    const seq = state.layers.length;
+    state.form = window.BB.evolveSlot(state.gen, state.form, agi, seq);
     const r = priceRange();
-    const layer = window.BB.makeLayer(slotIndex, state.epochId, price, tx, W, H, r.min, r.max);
-    state.layers.push(layer);
-    return layer;
+    state.layers.push({
+      slotIndex,
+      hue: window.BB.hueForPrice(price, r.min, r.max),
+      points: state.form.slice(),
+      thickness: state.gen.thickness,
+      alpha: state.gen.alpha,
+    });
   }
 
   function burstParticles(tx) {
@@ -185,6 +200,8 @@
     state.priceMin = Infinity;
     state.priceMax = -Infinity;
     state.particles = [];
+    state.gen = null;
+    state.form = null;
     ctx.clearRect(0, 0, W, H);
   }
 

@@ -1,9 +1,9 @@
 /* core.js: deterministic generation core shared by the live canvas and the gallery.
-   Original generative engine (own shapes and deformations):
-   base shapes are circle, star, spiral, lemniscate or polygon; each slot picks
-   2-3 deformations among breathe, twist, ripple, melt, drift and flow, applied
-   over a number of frames. The blockchain data picks the options and the same
-   data always redraws the same artwork. Exposes window.BB. */
+   One unique shape per epoch (circle, star, spiral, lemniscate or polygon).
+   Each slot evolves that same shape a few gentle steps (breathe, twist, ripple,
+   melt, drift, flow), so the canvas records the trajectory of a single living
+   form. The blockchain data picks the options and the same data always redraws
+   the same artwork. Exposes window.BB. */
 (function () {
   "use strict";
 
@@ -110,26 +110,21 @@
     return pts;
   }
 
-  // --- one generative shape for one slot (deterministic) ---
-  // price picks the palette, txCount picks complexity and agitation
-  function makeLayer(slotIndex, epochId, price, txCount, w, h, pMin, pMax) {
-    const rng = mulberry32(epochId * 131 + slotIndex * 9176);
+  // --- epoch generator: the fixed identity of one epoch's artwork ---
+  // depends only on epochId (+ canvas size), so live canvas and gallery agree
+  function makeEpochGen(epochId, w, h) {
+    const rng = mulberry32(epochId * 7919 + 104729);
     const r = rng;
-    const noise = makeNoise(epochId * 17 + slotIndex * 3);
-    const hue = hueForPrice(price, pMin, pMax);
-    const agi = Math.min(1, txCount / MAX_TX);
-    const diag = Math.hypot(w, h) / 2;
-    const cx = w * (0.25 + r() * 0.5);
-    const cy = h * (0.25 + r() * 0.5);
-
-    // shape and size grow across the epoch
     const shape = 1 + Math.floor(r() * 5);
-    const segments = Math.round(24 + agi * 120);
-    const size =
-      diag * (0.06 + (slotIndex / SLOTS_PER_EPOCH) * 0.32) * (0.6 + r() * 0.9);
-    let pts = shapePoints(shape, segments, cx, cy, size, r);
+    const segments = Math.round(60 + r() * 90);
+    const cx = w * (0.3 + r() * 0.4);
+    const cy = h * (0.3 + r() * 0.4);
+    const size = Math.hypot(w, h) / 2 * (0.15 + r() * 0.25);
+    const stepsPerSlot = 2 + Math.floor(r() * 3); // 2-4 steps per slot
+    const thickness = 1 + r() * 1.6;
+    const alpha = 0.45 + r() * 0.25;
 
-    // pick 2 or 3 deformations, fixed amplitudes (seeded)
+    // pick 2-3 deformations with gentle base amplitudes
     const pool = ["breathe", "twist", "ripple", "melt", "drift", "flow"];
     const defCount = 2 + Math.floor(r() * 2);
     const defs = [];
@@ -137,101 +132,108 @@
       const idx = Math.floor(r() * pool.length);
       const name = pool.splice(idx, 1)[0];
       if (name === "breathe") {
-        defs.push({
-          name,
-          amp: 0.15 + agi * 0.35 + r() * 0.2,
-          speed: 2 + r() * 3,
-          phase: r() * 2 * Math.PI,
-        });
+        defs.push({ name, amp: 0.02 + r() * 0.05, phase: r() * 2 * Math.PI });
       } else if (name === "twist") {
-        defs.push({ name, amp: (0.2 + agi * 0.8 + r() * 0.4) * (Math.PI / 180) });
+        defs.push({ name, amp: (0.2 + r() * 0.8) * (Math.PI / 180) });
       } else if (name === "ripple") {
-        defs.push({ name, amp: 3 + agi * 25 + r() * 8, freq: 2 + r() * 5, speed: 1 + r() * 3 });
+        defs.push({ name, amp: 1.5 + r() * 3, freq: 1 + r() * 3 });
       } else if (name === "melt") {
-        defs.push({ name, amp: 0.05 + agi * 0.25 + r() * 0.1 });
+        defs.push({ name, amp: 0.002 + r() * 0.005 });
       } else if (name === "drift") {
-        defs.push({ name, vx: (r() - 0.5) * (10 + agi * 40), vy: (r() - 0.5) * (10 + agi * 40) });
+        defs.push({ name, vx: (r() - 0.5) * 1.2, vy: (r() - 0.5) * 1.2 });
       } else if (name === "flow") {
-        defs.push({
-          name,
-          amp: (3 + agi * 25 + r() * 10) * 0.5,
-          scale: 0.004 + r() * 0.004,
-          step: 0.06 + r() * 0.06,
-        });
-      }
-    }
-
-    const frames = 8 + Math.floor(r() * 20); // 8-27 iterations
-
-    // apply the deformations, frame by frame, no RNG inside (deterministic)
-    for (let n = 0; n < frames; n++) {
-      const t = n / frames;
-      for (const def of defs) {
-        if (def.name === "breathe") {
-          pts = pts.map((p, i) => {
-            const dx = p[0] - cx;
-            const dy = p[1] - cy;
-            const dist = Math.hypot(dx, dy) || 1;
-            const ph = def.phase + (i / pts.length) * 2 * Math.PI;
-            const k = 1 + def.amp * Math.sin(def.speed * 2 * Math.PI * t + ph);
-            return [cx + (dx / dist) * dist * k, cy + (dy / dist) * dist * k];
-          });
-        } else if (def.name === "twist") {
-          const ang = def.amp * (n + 1);
-          pts = pts.map((p, i) => {
-            const dx = p[0] - cx;
-            const dy = p[1] - cy;
-            const a = ang * (i / pts.length);
-            const c = Math.cos(a);
-            const s = Math.sin(a);
-            return [cx + dx * c - dy * s, cy + dx * s + dy * c];
-          });
-        } else if (def.name === "ripple") {
-          const waveAmp = def.amp * (1 + t);
-          pts = pts.map((p, i) => {
-            const dx = p[0] - cx;
-            const dy = p[1] - cy;
-            const dist = Math.hypot(dx, dy) || 1;
-            const wave =
-              waveAmp *
-              Math.sin((i / pts.length) * def.freq * 2 * Math.PI + n * def.speed * 0.4);
-            const k = 1 + wave / Math.max(50, dist);
-            return [cx + dx * k, cy + dy * k];
-          });
-        } else if (def.name === "melt") {
-          const amount = def.amp * t;
-          pts = pts.map((p) => {
-            const dx = p[0] - cx;
-            const dy = p[1] - cy;
-            return [cx + dx * (1 - amount), cy + dy * (1 - amount)];
-          });
-        } else if (def.name === "drift") {
-          pts = pts.map((p) => [
-            p[0] + def.vx * (t + 1) * 0.1,
-            p[1] + def.vy * (t + 1) * 0.1,
-          ]);
-        } else if (def.name === "flow") {
-          const amp = def.amp * (0.4 + t * 0.6);
-          pts = pts.map((p) => {
-            const nx = noise(p[0] * def.scale, p[1] * def.scale + n * def.step);
-            const ny = noise(p[0] * def.scale + 100, p[1] * def.scale + n * def.step);
-            return [p[0] + (nx - 0.5) * amp * 2, p[1] + (ny - 0.5) * amp * 2];
-          });
-        }
+        defs.push({ name, amp: 0.5 + r() * 1.5, scale: 0.004 + r() * 0.004, step: 0.06 + r() * 0.06 });
       }
     }
 
     return {
-      slotIndex,
-      hue,
-      points: pts,
-      thickness: 0.6 + agi * 3.5,
-      alpha: 0.5 + agi * 0.45,
+      epochId,
+      shape,
+      segments,
+      cx,
+      cy,
+      size,
+      stepsPerSlot,
+      thickness,
+      alpha,
+      noise: makeNoise(epochId * 17 + 3),
+      defs,
     };
   }
 
+  // --- the base shape of the epoch (before any evolution) ---
+  function baseShape(gen) {
+    const rng = mulberry32(gen.epochId * 131 + 9176);
+    return shapePoints(gen.shape, gen.segments, gen.cx, gen.cy, gen.size, rng);
+  }
+
+  // --- one gentle evolution step, amplified by the slot's activity ---
+  // totalSteps is the step counter since the start of the seen sequence
+  function evolveStep(gen, pts, agi, totalSteps) {
+    const t = totalSteps / (SLOTS_PER_EPOCH * gen.stepsPerSlot); // 0..1
+    const m = 0.5 + agi; // activity multiplier
+    for (const def of gen.defs) {
+      if (def.name === "breathe") {
+        pts = pts.map((p, i) => {
+          const dx = p[0] - gen.cx;
+          const dy = p[1] - gen.cy;
+          const dist = Math.hypot(dx, dy) || 1;
+          const ph = def.phase + (i / pts.length) * 2 * Math.PI;
+          const k = 1 + def.amp * m * Math.sin(2 * Math.PI * t + ph);
+          return [gen.cx + (dx / dist) * dist * k, gen.cy + (dy / dist) * dist * k];
+        });
+      } else if (def.name === "twist") {
+        const ang = def.amp * m;
+        pts = pts.map((p, i) => {
+          const dx = p[0] - gen.cx;
+          const dy = p[1] - gen.cy;
+          const a = ang * (i / pts.length);
+          const c = Math.cos(a);
+          const s = Math.sin(a);
+          return [gen.cx + dx * c - dy * s, gen.cy + dx * s + dy * c];
+        });
+      } else if (def.name === "ripple") {
+        pts = pts.map((p, i) => {
+          const dx = p[0] - gen.cx;
+          const dy = p[1] - gen.cy;
+          const dist = Math.hypot(dx, dy) || 1;
+          const wave =
+            def.amp * m * Math.sin((i / pts.length) * def.freq * 2 * Math.PI + t * 6);
+          const k = 1 + wave / Math.max(60, dist);
+          return [gen.cx + dx * k, gen.cy + dy * k];
+        });
+      } else if (def.name === "melt") {
+        const amount = def.amp * m;
+        pts = pts.map((p) => [
+          gen.cx + (p[0] - gen.cx) * (1 - amount),
+          gen.cy + (p[1] - gen.cy) * (1 - amount),
+        ]);
+      } else if (def.name === "drift") {
+        pts = pts.map((p) => [p[0] + def.vx * m, p[1] + def.vy * m]);
+      } else if (def.name === "flow") {
+        pts = pts.map((p) => {
+          const nx = gen.noise(p[0] * def.scale, p[1] * def.scale + totalSteps * def.step);
+          const ny = gen.noise(p[0] * def.scale + 100, p[1] * def.scale + totalSteps * def.step);
+          return [p[0] + (nx - 0.5) * def.amp * m * 2, p[1] + (ny - 0.5) * def.amp * m * 2];
+        });
+      }
+    }
+    return pts;
+  }
+
+  // --- evolve one full slot (stepsPerSlot steps); seq is the 0-based
+  //     position of the slot in the seen sequence (live and replay agree) ---
+  function evolveSlot(gen, pts, agi, seq) {
+    let out = pts;
+    const base = seq * gen.stepsPerSlot;
+    for (let e = 0; e < gen.stepsPerSlot; e++) {
+      out = evolveStep(gen, out, agi, base + e + 1);
+    }
+    return out;
+  }
+
   // --- rebuild the full artwork of an epoch from its raw data ---
-  // epochData: [{ts, price, tx}] in slot order
+  // epochData: [{ts, price, tx}] in the order the slots were seen
   function generateEpochArt(epochData, w, h) {
     let pMin = Infinity;
     let pMax = -Infinity;
@@ -244,9 +246,22 @@
     pMin = Math.max(0, pMin - pad);
     pMax += pad;
 
-    return epochData.map((s, i) =>
-      makeLayer(i, s.epochId || 0, s.price, s.tx, w, h, pMin, pMax)
-    );
+    const gen = makeEpochGen(epochData[0].epochId || 0, w, h);
+    let form = baseShape(gen);
+    const layers = [];
+    for (let i = 0; i < epochData.length; i++) {
+      const s = epochData[i];
+      const agi = Math.min(1, s.tx / MAX_TX);
+      form = evolveSlot(gen, form, agi, i);
+      layers.push({
+        slotIndex: i,
+        hue: hueForPrice(s.price, pMin, pMax),
+        points: form.slice(),
+        thickness: gen.thickness,
+        alpha: gen.alpha,
+      });
+    }
+    return layers;
   }
 
   // --- paint a set of layers onto a 2D context (canvas already sized) ---
@@ -275,7 +290,9 @@
     mulberry32,
     makeNoise,
     hueForPrice,
-    makeLayer,
+    makeEpochGen,
+    baseShape,
+    evolveSlot,
     generateEpochArt,
     drawLayers,
   };
