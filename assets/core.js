@@ -119,7 +119,7 @@
     const segments = Math.round(60 + r() * 90);
     const cx = w * (0.3 + r() * 0.4);
     const cy = h * (0.3 + r() * 0.4);
-    const size = Math.hypot(w, h) / 2 * (0.15 + r() * 0.25);
+    const size = Math.hypot(w, h) / 2 * (0.12 + r() * 0.18);
     const stepsPerSlot = 2 + Math.floor(r() * 3); // 2-4 steps per slot
     const thickness = 1 + r() * 1.6;
     const alpha = 0.45 + r() * 0.25;
@@ -153,6 +153,8 @@
       cx,
       cy,
       size,
+      w,
+      h,
       stepsPerSlot,
       thickness,
       alpha,
@@ -221,6 +223,32 @@
     return pts;
   }
 
+  // --- keep the evolved shape inside the canvas: recenter and shrink only ---
+  // Never enlarges: the shape keeps its natural size, we only clamp overflow.
+  function normalizePoints(pts, w, h) {
+    const margin = 0.08;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const p of pts) {
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+    }
+    const bw = maxX - minX || 1;
+    const bh = maxY - minY || 1;
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const targetW = w * (1 - 2 * margin);
+    const targetH = h * (1 - 2 * margin);
+    const scale = Math.min(1, targetW / bw, targetH / bh);
+    const ox = w / 2 - cx * scale;
+    const oy = h / 2 - cy * scale;
+    return pts.map((p) => [ox + p[0] * scale, oy + p[1] * scale]);
+  }
+
   // --- evolve one full slot (stepsPerSlot steps); seq is the 0-based
   //     position of the slot in the seen sequence (live and replay agree) ---
   function evolveSlot(gen, pts, agi, seq) {
@@ -229,7 +257,7 @@
     for (let e = 0; e < gen.stepsPerSlot; e++) {
       out = evolveStep(gen, out, agi, base + e + 1);
     }
-    return out;
+    return normalizePoints(out, gen.w, gen.h);
   }
 
   // --- rebuild the full artwork of an epoch from its raw data ---
