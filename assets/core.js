@@ -1,5 +1,8 @@
 /* core.js: deterministic generation core shared by the live canvas and the gallery.
-   Same input data always produces the same artwork. Exposes window.BB. */
+   Draws UJI-style generative shapes (circle/square/triangle/line) whose points are
+   deformed over iterations by jitter, expansion, waviness and rotation.
+   The blockchain data picks the options; the same data always redraws the same art.
+   Exposes window.BB. */
 (function () {
   "use strict";
 
@@ -20,21 +23,6 @@
     };
   }
 
-  // --- 1D value noise with smoothstep interpolation ---
-  function makeNoise(seed) {
-    const rand = mulberry32(seed);
-    const table = [];
-    for (let i = 0; i < 512; i++) table.push(rand());
-    return function (x) {
-      const xi = Math.floor(x);
-      const xf = x - xi;
-      const a = table[((xi % 512) + 512) % 512];
-      const b = table[(((xi + 1) % 512) + 512) % 512];
-      const u = xf * xf * (3 - 2 * xf);
-      return a + (b - a) * u;
-    };
-  }
-
   // --- palette: price maps to hue, cool blue (low) to warm amber (high) ---
   function hueForPrice(price, pMin, pMax) {
     const span = pMax - pMin;
@@ -43,47 +31,122 @@
     return 220 - c * 190;
   }
 
-  // --- one calligraphic stroke for one slot (deterministic) ---
+  // --- rotate point p around origin o by angle (radians), UJI-style ---
+  function rotate(o, p, angle) {
+    const s = Math.sin(angle);
+    const c = Math.cos(angle);
+    const dx = p[0] - o[0];
+    const dy = p[1] - o[1];
+    return [o[0] + dx * c - dy * s, o[1] + dx * s + dy * c];
+  }
+
+  // --- base shape outline: 1=circle, 2=square, 3=triangle, 4=line ---
+  function shapePoints(shape, segments, cx, cy, radius) {
+    const pts = [];
+    for (let i = 0; i < segments; i++) {
+      let x, y;
+      if (shape === 1) {
+        x = cx + radius * Math.cos((i / segments) * 2 * Math.PI);
+        y = cy + radius * Math.sin((i / segments) * 2 * Math.PI);
+      } else if (shape === 2) {
+        const q = segments / 4;
+        if (i < q) {
+          x = cx - radius + 2 * radius * (i / q);
+          y = cy - radius;
+        } else if (i < 2 * q) {
+          x = cx + radius;
+          y = cy - radius + 2 * radius * ((i - q) / q);
+        } else if (i < 3 * q) {
+          x = cx + radius - 2 * radius * ((i - 2 * q) / q);
+          y = cy + radius;
+        } else {
+          x = cx - radius;
+          y = cy + radius - 2 * radius * ((i - 3 * q) / q);
+        }
+      } else if (shape === 3) {
+        const q = segments / 3;
+        if (i < q) {
+          x = cx - radius + 2 * radius * (i / q);
+          y = cy + radius;
+        } else if (i < 2 * q) {
+          x = cx + radius - radius * ((i - q) / q);
+          y = cy + radius - 2 * radius * ((i - q) / q);
+        } else {
+          x = cx - radius * ((i - 2 * q) / q);
+          y = cy - radius + 2 * radius * ((i - 2 * q) / q);
+        }
+      } else {
+        x = cx - radius + 2 * radius * (i / segments);
+        y = cy;
+      }
+      pts.push([x, y]);
+    }
+    return pts;
+  }
+
+  // --- one UJI-style shape for one slot (deterministic) ---
+  // price picks the palette, txCount picks the complexity and agitation
   function makeLayer(slotIndex, epochId, price, txCount, w, h, pMin, pMax) {
     const rng = mulberry32(epochId * 131 + slotIndex * 9176);
-    const noise = makeNoise(epochId * 31 + slotIndex * 7 + 13);
+    const r = rng;
     const hue = hueForPrice(price, pMin, pMax);
     const agi = Math.min(1, txCount / MAX_TX);
-    const cx = w / 2;
-    const cy = h / 2;
     const diag = Math.hypot(w, h) / 2;
 
-    // starting point moves outward with the slot, direction seeded
-    const baseAngle = (slotIndex / SLOTS_PER_EPOCH) * Math.PI * 2 + rng() * 0.6;
-    const radius = diag * (0.05 + (slotIndex / SLOTS_PER_EPOCH) * 0.75) + rng() * 40;
-    const startX = cx + Math.cos(baseAngle) * radius;
-    const startY = cy + Math.sin(baseAngle) * radius;
+    // options derived from the data
+    const shape = 1 + Math.floor(r() * 4);
+    const segments = Math.round(16 + agi * 130);
+    const cx = w * (0.25 + r() * 0.5);
+    const cy = h * (0.25 + r() * 0.5);
+    const radius =
+      diag * (0.08 + (slotIndex / SLOTS_PER_EPOCH) * 0.3) * (0.6 + r() * 0.8);
+    const frames = 1 + Math.floor(r() * 25); // how far the drawing evolves
 
-    const steps = Math.round(14 + txCount * 0.35); // more tx = longer stroke
-    const stepLen = 8 + agi * 14;
-    const bend = 0.02 + agi * 0.1; // curvature
-    const wobble = 0.05 + agi * 0.5; // noise influence
-    const baseW = 0.8 + agi * 4.5; // stroke width
-    const xOff = rng() * 1000;
-    const yOff = rng() * 1000;
+    const jitter = agi * 40;
+    const expansion = 1 + agi * 0.3;
+    const expansionExp = agi * 2;
+    const translationX = (r() - 0.5) * 80;
+    const translationY = (r() - 0.5) * 80;
+    const wavinessP = 10 + r() * 30;
+    const wavinessA = agi * 30;
+    const rotationSpeed = ((r() - 0.5) * 3 + agi * 2) * (Math.PI / 180);
+    const rotationSpeedup = r() * 0.15;
+    const rotOriginX = w * r();
+    const rotOriginY = h * r();
+    const thickness = 0.6 + agi * 3.5;
+    const alpha = 0.55 + agi * 0.4;
 
-    let x = startX;
-    let y = startY;
-    let ang = Math.atan2(cy - y, cx - x) + (rng() - 0.5) * 1.2;
-    const points = [];
+    // start from the base shape
+    let line = shapePoints(shape, segments, cx, cy, radius);
 
-    for (let i = 0; i < steps; i++) {
-      const t = i / Math.max(1, steps - 1);
-      const n1 = noise(xOff + i * 0.11);
-      const n2 = noise(yOff + i * 0.13);
-      ang += (bend + wobble * (n1 - 0.5)) * (n2 > 0.5 ? 1 : -1);
-      x += Math.cos(ang) * stepLen;
-      y += Math.sin(ang) * stepLen;
-      const wdt = Math.max(0.3, baseW * (0.35 + 0.65 * Math.sin(Math.PI * t)) * (0.6 + n2 * 0.8));
-      points.push({ x, y, w: wdt });
+    // evolve the points over `frames` iterations, UJI-style
+    for (let n = 0; n < frames; n++) {
+      const expFactorX = Math.pow(expansion, 1 + expansionExp * n / 1000);
+      const expFactorY = Math.pow(expansion, 1 + expansionExp * n / 1000);
+      const angle =
+        rotationSpeed * (1 + rotationSpeedup * n);
+      line = line.map((p, i) => {
+        let x =
+          cx +
+          (p[0] - cx + (r() - 0.5) * jitter) * expFactorX +
+          translationX +
+          wavinessA * Math.sin((2 * Math.PI * i) / wavinessP);
+        let y =
+          cy +
+          (p[1] - cy + (r() - 0.5) * jitter) * expFactorY +
+          translationY +
+          wavinessA * Math.cos((2 * Math.PI * i) / wavinessP);
+        return rotate([w * rotOriginX, h * rotOriginY], [x, y], angle);
+      });
     }
 
-    return { slotIndex, hue, points };
+    return {
+      slotIndex,
+      hue,
+      points: line,
+      thickness,
+      alpha,
+    };
   }
 
   // --- rebuild the full artwork of an epoch from its raw data ---
@@ -111,16 +174,15 @@
     for (const layer of layers) {
       const pts = layer.points;
       if (pts.length < 2) continue;
-      ctx.strokeStyle = "hsla(" + layer.hue + ", 70%, 62%, " + a + ")";
+      ctx.strokeStyle =
+        "hsla(" + layer.hue + ", 65%, 60%, " + layer.alpha * a + ")";
+      ctx.lineWidth = layer.thickness;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
-      for (let i = 0; i < pts.length - 1; i++) {
-        ctx.lineWidth = (pts[i].w + pts[i + 1].w) / 2;
-        ctx.beginPath();
-        ctx.moveTo(pts[i].x, pts[i].y);
-        ctx.lineTo(pts[i + 1].x, pts[i + 1].y);
-        ctx.stroke();
-      }
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.stroke();
     }
   }
 
@@ -130,7 +192,6 @@
     EPOCH_SECONDS,
     MAX_TX,
     mulberry32,
-    makeNoise,
     hueForPrice,
     makeLayer,
     generateEpochArt,
