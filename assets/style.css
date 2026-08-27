@@ -136,6 +136,7 @@ body.gallery-page { overflow: auto; }
   border: 1px solid #1f1f24;
   border-radius: 10px;
   overflow: hidden;
+  cursor: pointer;
   transition: border-color 0.2s;
 }
 .epoch-card:hover { border-color: #444; }
@@ -156,6 +157,25 @@ body.gallery-page { overflow: auto; }
   margin: 3rem auto;
   text-align: center;
   color: var(--muted);
+}
+
+/* ---------- lightbox ---------- */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 5, 7, 0.9);
+  cursor: zoom-out;
+}
+.lightbox.visible { display: flex; }
+.lightbox canvas {
+  max-width: 92vw;
+  max-height: 88vh;
+  border-radius: 8px;
+  box-shadow: 0 1rem 4rem rgba(0, 0, 0, 0.6);
 }
 
 @media (max-width: 480px) {
