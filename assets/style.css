@@ -1,0 +1,165 @@
+/* Blockchain Breathing: global styles, dark and quiet. */
+:root {
+  --bg: #0a0a0c;
+  --fg: #e8e8ea;
+  --muted: #6b7280;
+  --accent: #e8e8ea;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  overflow: hidden;
+}
+
+body.gallery-page { overflow: auto; }
+
+#art {
+  position: fixed;
+  inset: 0;
+  display: block;
+}
+
+/* ---------- overlay ---------- */
+.overlay {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  user-select: none;
+}
+.top-left { top: 1.25rem; left: 1.5rem; }
+.top-right { top: 1.25rem; right: 1.5rem; pointer-events: auto; }
+.bottom-left { bottom: 1.25rem; left: 1.5rem; }
+.bottom-right { bottom: 1.25rem; right: 1.5rem; text-align: right; }
+
+.title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.stat {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+.stat .label {
+  color: var(--muted);
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.stat span:last-child { font-variant-numeric: tabular-nums; }
+
+.status { color: var(--muted); font-size: 0.75rem; margin-top: 0.5rem; }
+
+.btn {
+  pointer-events: auto;
+  display: inline-block;
+  color: var(--fg);
+  text-decoration: none;
+  border: 1px solid #333;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+  transition: border-color 0.2s, background 0.2s;
+}
+.btn:hover { border-color: var(--fg); background: rgba(255,255,255,0.05); }
+
+/* ---------- freeze ---------- */
+.freeze {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  background: rgba(10, 10, 12, 0.55);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+.freeze.visible { opacity: 1; }
+.freeze-title {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.freeze-sub {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* ---------- gallery ---------- */
+.gallery-page { padding: 2rem 1.5rem 4rem; }
+
+.gallery-header {
+  max-width: 60rem;
+  margin: 0 auto 1.5rem;
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.gallery-header h1 { margin: 0; font-size: 1.5rem; }
+.muted { color: var(--muted); font-size: 0.85rem; }
+
+.gallery-grid {
+  max-width: 60rem;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.epoch-card {
+  background: #121216;
+  border: 1px solid #1f1f24;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+.epoch-card:hover { border-color: #444; }
+.epoch-card canvas { display: block; width: 100%; aspect-ratio: 16 / 10; }
+.epoch-card .epoch-meta {
+  padding: 0.6rem 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+.gallery-footer { max-width: 60rem; margin: 2rem auto 0; }
+
+.empty-state {
+  max-width: 60rem;
+  margin: 3rem auto;
+  text-align: center;
+  color: var(--muted);
+}
+
+@media (max-width: 480px) {
+  .bottom-left, .bottom-right { font-size: 0.8rem; }
+  .overlay.top-left { top: 1rem; left: 1rem; }
+  .overlay.top-right { top: 1rem; right: 1rem; }
+}
