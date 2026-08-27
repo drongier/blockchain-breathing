@@ -1,8 +1,9 @@
 /* core.js: deterministic generation core shared by the live canvas and the gallery.
-   Draws UJI-style generative shapes (circle/square/triangle/line) whose points are
-   deformed over iterations by jitter, expansion, waviness and rotation.
-   The blockchain data picks the options; the same data always redraws the same art.
-   Exposes window.BB. */
+   Original generative engine (own shapes and deformations):
+   base shapes are circle, star, spiral, lemniscate or polygon; each slot picks
+   2-3 deformations among breathe, twist, ripple, melt, drift and flow, applied
+   over a number of frames. The blockchain data picks the options and the same
+   data always redraws the same artwork. Exposes window.BB. */
 (function () {
   "use strict";
 
@@ -23,6 +24,29 @@
     };
   }
 
+  // --- 2D value noise with smoothstep interpolation ---
+  function makeNoise(seed) {
+    const rand = mulberry32(seed);
+    const table = [];
+    for (let i = 0; i < 256; i++) table.push(rand());
+    const at = function (xx, yy) {
+      const xi = Math.floor(xx);
+      const yi = Math.floor(yy);
+      const xf = xx - xi;
+      const yf = yy - yi;
+      const u = xf * xf * (3 - 2 * xf);
+      const v = yf * yf * (3 - 2 * yf);
+      const h = (px, py) =>
+        table[(((px % 256) + 256) % 256 + (((py % 256) + 256) % 256) * 57) % 256];
+      const a = h(xi, yi);
+      const b = h(xi + 1, yi);
+      const c = h(xi, yi + 1);
+      const d = h(xi + 1, yi + 1);
+      return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+    };
+    return at;
+  }
+
   // --- palette: price maps to hue, cool blue (low) to warm amber (high) ---
   function hueForPrice(price, pMin, pMax) {
     const span = pMax - pMin;
@@ -31,121 +55,178 @@
     return 220 - c * 190;
   }
 
-  // --- rotate point p around origin o by angle (radians), UJI-style ---
-  function rotate(o, p, angle) {
-    const s = Math.sin(angle);
-    const c = Math.cos(angle);
-    const dx = p[0] - o[0];
-    const dy = p[1] - o[1];
-    return [o[0] + dx * c - dy * s, o[1] + dx * s + dy * c];
-  }
-
-  // --- base shape outline: 1=circle, 2=square, 3=triangle, 4=line ---
-  function shapePoints(shape, segments, cx, cy, radius) {
+  // --- base shapes ---
+  // 1 circle, 2 star, 3 spiral, 4 lemniscate, 5 regular polygon outline
+  function shapePoints(shape, segments, cx, cy, size, r) {
     const pts = [];
-    for (let i = 0; i < segments; i++) {
-      let x, y;
-      if (shape === 1) {
-        x = cx + radius * Math.cos((i / segments) * 2 * Math.PI);
-        y = cy + radius * Math.sin((i / segments) * 2 * Math.PI);
-      } else if (shape === 2) {
-        const q = segments / 4;
-        if (i < q) {
-          x = cx - radius + 2 * radius * (i / q);
-          y = cy - radius;
-        } else if (i < 2 * q) {
-          x = cx + radius;
-          y = cy - radius + 2 * radius * ((i - q) / q);
-        } else if (i < 3 * q) {
-          x = cx + radius - 2 * radius * ((i - 2 * q) / q);
-          y = cy + radius;
-        } else {
-          x = cx - radius;
-          y = cy + radius - 2 * radius * ((i - 3 * q) / q);
-        }
-      } else if (shape === 3) {
-        const q = segments / 3;
-        if (i < q) {
-          x = cx - radius + 2 * radius * (i / q);
-          y = cy + radius;
-        } else if (i < 2 * q) {
-          x = cx + radius - radius * ((i - q) / q);
-          y = cy + radius - 2 * radius * ((i - q) / q);
-        } else {
-          x = cx - radius * ((i - 2 * q) / q);
-          y = cy - radius + 2 * radius * ((i - 2 * q) / q);
-        }
-      } else {
-        x = cx - radius + 2 * radius * (i / segments);
-        y = cy;
+    let i, a, t, rad;
+    if (shape === 1) {
+      for (i = 0; i < segments; i++) {
+        a = (i / segments) * 2 * Math.PI;
+        pts.push([cx + size * Math.cos(a), cy + size * Math.sin(a)]);
       }
-      pts.push([x, y]);
+    } else if (shape === 2) {
+      const branches = 3 + Math.floor(r() * 6);
+      const inner = 0.35 + r() * 0.35;
+      const total = segments * 2;
+      for (i = 0; i < total; i++) {
+        a = (i / total) * 2 * Math.PI;
+        rad = i % 2 === 0 ? size : size * inner;
+        pts.push([cx + rad * Math.cos(a), cy + rad * Math.sin(a)]);
+      }
+    } else if (shape === 3) {
+      const turns = 1 + r() * 2.5;
+      for (i = 0; i < segments; i++) {
+        t = i / segments;
+        a = t * turns * 2 * Math.PI;
+        rad = size * t;
+        pts.push([cx + rad * Math.cos(a), cy + rad * Math.sin(a)]);
+      }
+    } else if (shape === 4) {
+      for (i = 0; i < segments; i++) {
+        t = (i / segments) * 2 * Math.PI;
+        const denom = 1 + Math.sin(t) * Math.sin(t);
+        pts.push([
+          cx + (size * Math.cos(t)) / denom,
+          cy + (size * Math.sin(t) * Math.cos(t)) / denom,
+        ]);
+      }
+    } else {
+      const sides = 3 + Math.floor(r() * 5);
+      const corners = [];
+      for (let k = 0; k < sides; k++) {
+        a = (k / sides) * 2 * Math.PI - Math.PI / 2;
+        corners.push([cx + size * Math.cos(a), cy + size * Math.sin(a)]);
+      }
+      for (i = 0; i < segments; i++) {
+        t = (i / segments) * sides;
+        const k = Math.floor(t) % sides;
+        const f = t - Math.floor(t);
+        const p0 = corners[k];
+        const p1 = corners[(k + 1) % sides];
+        pts.push([p0[0] + (p1[0] - p0[0]) * f, p0[1] + (p1[1] - p0[1]) * f]);
+      }
     }
     return pts;
   }
 
-  // --- one UJI-style shape for one slot (deterministic) ---
-  // price picks the palette, txCount picks the complexity and agitation
+  // --- one generative shape for one slot (deterministic) ---
+  // price picks the palette, txCount picks complexity and agitation
   function makeLayer(slotIndex, epochId, price, txCount, w, h, pMin, pMax) {
     const rng = mulberry32(epochId * 131 + slotIndex * 9176);
     const r = rng;
+    const noise = makeNoise(epochId * 17 + slotIndex * 3);
     const hue = hueForPrice(price, pMin, pMax);
     const agi = Math.min(1, txCount / MAX_TX);
     const diag = Math.hypot(w, h) / 2;
-
-    // options derived from the data
-    const shape = 1 + Math.floor(r() * 4);
-    const segments = Math.round(16 + agi * 130);
     const cx = w * (0.25 + r() * 0.5);
     const cy = h * (0.25 + r() * 0.5);
-    const radius =
-      diag * (0.08 + (slotIndex / SLOTS_PER_EPOCH) * 0.3) * (0.6 + r() * 0.8);
-    const frames = 1 + Math.floor(r() * 25); // how far the drawing evolves
 
-    const jitter = agi * 40;
-    const expansion = 1 + agi * 0.3;
-    const expansionExp = agi * 2;
-    const translationX = (r() - 0.5) * 80;
-    const translationY = (r() - 0.5) * 80;
-    const wavinessP = 10 + r() * 30;
-    const wavinessA = agi * 30;
-    const rotationSpeed = ((r() - 0.5) * 3 + agi * 2) * (Math.PI / 180);
-    const rotationSpeedup = r() * 0.15;
-    const rotOriginX = w * r();
-    const rotOriginY = h * r();
-    const thickness = 0.6 + agi * 3.5;
-    const alpha = 0.55 + agi * 0.4;
+    // shape and size grow across the epoch
+    const shape = 1 + Math.floor(r() * 5);
+    const segments = Math.round(24 + agi * 120);
+    const size =
+      diag * (0.06 + (slotIndex / SLOTS_PER_EPOCH) * 0.32) * (0.6 + r() * 0.9);
+    let pts = shapePoints(shape, segments, cx, cy, size, r);
 
-    // start from the base shape
-    let line = shapePoints(shape, segments, cx, cy, radius);
+    // pick 2 or 3 deformations, fixed amplitudes (seeded)
+    const pool = ["breathe", "twist", "ripple", "melt", "drift", "flow"];
+    const defCount = 2 + Math.floor(r() * 2);
+    const defs = [];
+    for (let d = 0; d < defCount; d++) {
+      const idx = Math.floor(r() * pool.length);
+      const name = pool.splice(idx, 1)[0];
+      if (name === "breathe") {
+        defs.push({
+          name,
+          amp: 0.15 + agi * 0.35 + r() * 0.2,
+          speed: 2 + r() * 3,
+          phase: r() * 2 * Math.PI,
+        });
+      } else if (name === "twist") {
+        defs.push({ name, amp: (0.2 + agi * 0.8 + r() * 0.4) * (Math.PI / 180) });
+      } else if (name === "ripple") {
+        defs.push({ name, amp: 3 + agi * 25 + r() * 8, freq: 2 + r() * 5, speed: 1 + r() * 3 });
+      } else if (name === "melt") {
+        defs.push({ name, amp: 0.05 + agi * 0.25 + r() * 0.1 });
+      } else if (name === "drift") {
+        defs.push({ name, vx: (r() - 0.5) * (10 + agi * 40), vy: (r() - 0.5) * (10 + agi * 40) });
+      } else if (name === "flow") {
+        defs.push({
+          name,
+          amp: (3 + agi * 25 + r() * 10) * 0.5,
+          scale: 0.004 + r() * 0.004,
+          step: 0.06 + r() * 0.06,
+        });
+      }
+    }
 
-    // evolve the points over `frames` iterations, UJI-style
+    const frames = 8 + Math.floor(r() * 20); // 8-27 iterations
+
+    // apply the deformations, frame by frame, no RNG inside (deterministic)
     for (let n = 0; n < frames; n++) {
-      const expFactorX = Math.pow(expansion, 1 + expansionExp * n / 1000);
-      const expFactorY = Math.pow(expansion, 1 + expansionExp * n / 1000);
-      const angle =
-        rotationSpeed * (1 + rotationSpeedup * n);
-      line = line.map((p, i) => {
-        let x =
-          cx +
-          (p[0] - cx + (r() - 0.5) * jitter) * expFactorX +
-          translationX +
-          wavinessA * Math.sin((2 * Math.PI * i) / wavinessP);
-        let y =
-          cy +
-          (p[1] - cy + (r() - 0.5) * jitter) * expFactorY +
-          translationY +
-          wavinessA * Math.cos((2 * Math.PI * i) / wavinessP);
-        return rotate([w * rotOriginX, h * rotOriginY], [x, y], angle);
-      });
+      const t = n / frames;
+      for (const def of defs) {
+        if (def.name === "breathe") {
+          pts = pts.map((p, i) => {
+            const dx = p[0] - cx;
+            const dy = p[1] - cy;
+            const dist = Math.hypot(dx, dy) || 1;
+            const ph = def.phase + (i / pts.length) * 2 * Math.PI;
+            const k = 1 + def.amp * Math.sin(def.speed * 2 * Math.PI * t + ph);
+            return [cx + (dx / dist) * dist * k, cy + (dy / dist) * dist * k];
+          });
+        } else if (def.name === "twist") {
+          const ang = def.amp * (n + 1);
+          pts = pts.map((p, i) => {
+            const dx = p[0] - cx;
+            const dy = p[1] - cy;
+            const a = ang * (i / pts.length);
+            const c = Math.cos(a);
+            const s = Math.sin(a);
+            return [cx + dx * c - dy * s, cy + dx * s + dy * c];
+          });
+        } else if (def.name === "ripple") {
+          const waveAmp = def.amp * (1 + t);
+          pts = pts.map((p, i) => {
+            const dx = p[0] - cx;
+            const dy = p[1] - cy;
+            const dist = Math.hypot(dx, dy) || 1;
+            const wave =
+              waveAmp *
+              Math.sin((i / pts.length) * def.freq * 2 * Math.PI + n * def.speed * 0.4);
+            const k = 1 + wave / Math.max(50, dist);
+            return [cx + dx * k, cy + dy * k];
+          });
+        } else if (def.name === "melt") {
+          const amount = def.amp * t;
+          pts = pts.map((p) => {
+            const dx = p[0] - cx;
+            const dy = p[1] - cy;
+            return [cx + dx * (1 - amount), cy + dy * (1 - amount)];
+          });
+        } else if (def.name === "drift") {
+          pts = pts.map((p) => [
+            p[0] + def.vx * (t + 1) * 0.1,
+            p[1] + def.vy * (t + 1) * 0.1,
+          ]);
+        } else if (def.name === "flow") {
+          const amp = def.amp * (0.4 + t * 0.6);
+          pts = pts.map((p) => {
+            const nx = noise(p[0] * def.scale, p[1] * def.scale + n * def.step);
+            const ny = noise(p[0] * def.scale + 100, p[1] * def.scale + n * def.step);
+            return [p[0] + (nx - 0.5) * amp * 2, p[1] + (ny - 0.5) * amp * 2];
+          });
+        }
+      }
     }
 
     return {
       slotIndex,
       hue,
-      points: line,
-      thickness,
-      alpha,
+      points: pts,
+      thickness: 0.6 + agi * 3.5,
+      alpha: 0.5 + agi * 0.45,
     };
   }
 
@@ -192,6 +273,7 @@
     EPOCH_SECONDS,
     MAX_TX,
     mulberry32,
+    makeNoise,
     hueForPrice,
     makeLayer,
     generateEpochArt,

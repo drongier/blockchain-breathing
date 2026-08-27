@@ -24,13 +24,13 @@ assets/style.css → styles
 
 1. Toutes les ~5 s, le site interroge un RPC Ethereum public (sans clé) pour le dernier bloc : timestamp + nombre de transactions.
 2. Le prix de l'ETH vient de CoinGecko (gratuit, CORS ouvert).
-3. À chaque nouveau bloc, une forme générative style UJI est dessinée : le prix choisit la palette, le nombre de transactions choisit la complexité et l'agitation (segments, tremblement, ondulation, rotation). Au-delà de ~100 tx, des particules explosent.
+3. À chaque nouveau bloc, une forme générative est dessinée : le prix choisit la palette, le nombre de transactions choisit la complexité et l'agitation (segments, respiration, torsion, ondes, dérive, champs de bruit). Au-delà de ~100 tx, des particules explosent.
 4. À la fin de l'epoch, la toile est figée quelques secondes, puis sauvegardée en localStorage (données brutes des 32 slots) et la suivante commence.
 5. La galerie rejoue les toiles à partir de ces données : l'art étant déterministe, le résultat est identique.
 
 ## Crédits
 
-Le moteur de génération est fortement inspiré d'[UJI](https://github.com/doersino/uji) par [doersino](https://noahdoersing.com/) (Noah Doersing), sous licence MIT (clause : pas de NFT). Merci à lui pour cette merveilleuse machine à dessiner.
+Le concept général (des formes génératives qui évoluent au fil des itérations) est inspiré d'[UJI](https://github.com/doersino/uji) par [doersino](https://noahdoersing.com/) (Noah Doersing). Le moteur de ce projet est une implémentation originale : formes (cercle, étoile, spirale, lemniscate, polygone) et déformations (respiration, torsion, ondes, fusion, dérive, champs de bruit) propres au projet.
 
 ## Déploiement
 

@@ -12,7 +12,7 @@
   ];
   const PRICE_URL =
     "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
-  const POLL_MS = 5000;
+  const POLL_MS = 8000;
   const FREEZE_MS = 8000;
   const PARTICLE_THRESHOLD = 100;
   const LS_KEY = "bb.epochs";
@@ -87,7 +87,9 @@
   }
 
   async function fetchBlock() {
-    const block = await rpc("eth_getBlockByNumber", ["latest", true]);
+    // "false" keeps only transaction hashes: tiny payload, same count.
+    // "true" would download megabytes of full transaction data per block.
+    const block = await rpc("eth_getBlockByNumber", ["latest", false]);
     return {
       number: parseInt(block.number, 16),
       timestamp: parseInt(block.timestamp, 16),
