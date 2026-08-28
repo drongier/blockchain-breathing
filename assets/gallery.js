@@ -16,7 +16,17 @@
 
   function load() {
     try {
-      return JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+      const records = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+      // migration: older archives stored slots without their epochId,
+      // which made every replay fall back to epoch 0 (same archetype).
+      for (const rec of records) {
+        if (rec.slots) {
+          for (const s of rec.slots) {
+            if (s.epochId === undefined) s.epochId = rec.id;
+          }
+        }
+      }
+      return records;
     } catch (err) {
       console.warn("gallery load failed:", err.message);
       return [];

@@ -180,7 +180,12 @@
     }
 
     addLayer(slotIndex, state.price, state.txCount);
-    state.epochData.push({ ts: block.timestamp, price: state.price, tx: state.txCount });
+    state.epochData.push({
+      ts: block.timestamp,
+      price: state.price,
+      tx: state.txCount,
+      epochId: state.epochId,
+    });
     if (state.txCount > PARTICLE_THRESHOLD) burstParticles(state.txCount);
     updateStats();
     setStatus("en direct");
