@@ -311,11 +311,23 @@
   }
 
   // --- paint a set of layers onto a 2D context (canvas already sized) ---
-  function drawLayers(ctx, layers, alpha) {
+  // opts.now / opts.traceDuration enable progressive drawing: each layer with a
+  // createdAt timestamp is traced point by point, like a pen drawing the shape.
+  function drawLayers(ctx, layers, alpha, opts) {
     const a = alpha === undefined ? 1 : alpha;
+    const now = opts ? opts.now : undefined;
+    const traceDuration = opts ? opts.traceDuration : undefined;
     for (const layer of layers) {
       const pts = layer.points;
       if (pts.length < 2) continue;
+
+      let count = pts.length;
+      if (now !== undefined && traceDuration && layer.createdAt !== undefined) {
+        const t = (now - layer.createdAt) / traceDuration;
+        const progress = t < 0 ? 0 : t > 1 ? 1 : t;
+        count = Math.max(2, Math.round(progress * (pts.length - 1)) + 1);
+      }
+
       ctx.strokeStyle =
         "hsla(" + layer.hue + ", 65%, 60%, " + layer.alpha * a + ")";
       ctx.lineWidth = layer.thickness;
@@ -323,7 +335,7 @@
       ctx.lineJoin = "round";
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      for (let i = 1; i < count; i++) ctx.lineTo(pts[i][0], pts[i][1]);
       ctx.stroke();
     }
   }

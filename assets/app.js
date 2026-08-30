@@ -14,6 +14,7 @@
     "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
   const POLL_MS = 8000;
   const FREEZE_MS = 8000;
+  const TRACE_MS = 11000; // how long one stroke takes to draw itself
   const PARTICLE_THRESHOLD = 100;
   const LS_KEY = "bb.epochs";
 
@@ -136,6 +137,7 @@
       points: state.form.slice(),
       thickness: state.gen.thickness,
       alpha: state.gen.alpha,
+      createdAt: Date.now(),
     });
   }
 
@@ -237,7 +239,10 @@
     ctx.fillStyle = "#0a0a0c";
     ctx.fillRect(0, 0, W, H);
 
-    window.BB.drawLayers(ctx, state.layers);
+    window.BB.drawLayers(ctx, state.layers, undefined, {
+      now: Date.now(),
+      traceDuration: TRACE_MS,
+    });
 
     for (let i = state.particles.length - 1; i >= 0; i--) {
       const p = state.particles[i];
