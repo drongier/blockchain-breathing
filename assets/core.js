@@ -281,24 +281,21 @@
   // --- rebuild the full artwork of an epoch from its raw data ---
   // epochData: [{ts, price, tx}] in the order the slots were seen
   function generateEpochArt(epochData, w, h) {
-    let pMin = Infinity;
-    let pMax = -Infinity;
-    for (const s of epochData) {
-      if (s.price < pMin) pMin = s.price;
-      if (s.price > pMax) pMax = s.price;
-    }
-    if (pMin === Infinity) { pMin = 2000; pMax = 4000; } // fallback
-    const pad = Math.max(100, (pMax - pMin) * 0.15);
-    pMin = Math.max(0, pMin - pad);
-    pMax += pad;
-
     const gen = makeEpochGen(epochData[0].epochId || 0, w, h);
     let form = baseShape(gen);
     const layers = [];
+
+    // progressive price range, exactly like the live canvas: each slot's hue is
+    // mapped against the min/max seen so far. No padding, so the small real
+    // price moves still span the full blue-to-amber range.
+    let pMin = Infinity;
+    let pMax = -Infinity;
     for (let i = 0; i < epochData.length; i++) {
       const s = epochData[i];
       const agi = Math.min(1, s.tx / MAX_TX);
       form = evolveSlot(gen, form, agi, i);
+      if (s.price < pMin) pMin = s.price;
+      if (s.price > pMax) pMax = s.price;
       layers.push({
         slotIndex: i,
         hue: hueForPrice(s.price, pMin, pMax),
